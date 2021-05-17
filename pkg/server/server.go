@@ -14,6 +14,11 @@ const lineCRLF string = "\r\n"
 
 type HandlerFunc func(con net.Conn)
 
+type Request struct{
+	Conn		net.Conn
+	PathParams	map[string]string
+}
+
 type Server struct{
 	addr 		string
 	mu			sync.RWMutex
