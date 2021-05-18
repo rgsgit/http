@@ -17,8 +17,10 @@ type HandlerFunc func(req *Request)
 
 type Request struct{
 	Conn		net.Conn
-	//PathParams	map[string]string
+	PathParams	map[string]string
 	QueryParams	url.Values
+	Headers     map[string]string
+	Body        []byte
 }
 
 type Server struct{
@@ -73,6 +75,7 @@ func (s *Server) handle(conn net.Conn) {
 		}
 	}()
 
+	var req Request
 	buf := make([]byte, 4096)
 	n, err := conn.Read(buf)
 	if err == io.EOF {
@@ -84,19 +87,46 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 
-	//Parsing...
+	//Parsing request line
 	data := buf[:n]
-
-	requestLineDelim := []byte{'\r', '\n'}
-	requestLineEnd := bytes.Index(data, requestLineDelim)
-
-	if requestLineEnd == -1 {
-		log.Print("requestLineEndErr: ", requestLineEnd)
+	requestDelimetr := []byte{'\r', '\n'}
+	requestLine := bytes.Index(data, requestDelimetr)
+	if requestLine == -1 {
+		log.Print("requestLineErr: ", requestLine)
 		return
 	}
 
-	requestLine := string(data[:requestLineEnd])
-	parts := strings.Split(requestLine, " ")
+	//Parsing header line
+	headerDelimetr := []byte{'\r', '\n', '\r', '\n'}
+	headerLine := bytes.Index(data, headerDelimetr)
+	if headerLine == -1 {
+		log.Print("headerLineEnd: ", headerLine)
+		return
+	}
+
+	headersLine := string(data[requestLine:headerLine])
+	// Use - header := strings.Split(headerLine, "\r\n")[1:]
+	// [1:] == [1:len(headerLine)]
+	// header will be without "", key of the header will start with one.
+	header := strings.Split(headersLine, "\r\n")
+
+	paramMap := make(map[string]string)
+	for _, v := range header {
+		if v != "" {
+			eachHeaderLine := strings.Split(v, ": ")
+			paramMap[eachHeaderLine[0]] = eachHeaderLine[1]
+		}
+	}
+	req.Headers = paramMap
+
+	//Parsing body line
+	body := string(data[headerLine:])
+	bodyLine := strings.Trim(body, "\r\n")
+	req.Body = []byte(bodyLine)
+
+	//Continuing to parsing the request lines
+	request := string(data[:requestLine])
+	parts := strings.Split(request, " ")
 	if len(parts) != 3 {
 		log.Print("Parts: ", parts)
 		return
@@ -108,7 +138,14 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 
-	uri, err := url.ParseRequestURI(path)
+	decoded, err := url.PathUnescape(path)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	log.Println(decoded)
+
+	uri, err := url.ParseRequestURI(decoded)
 	if err != nil {
 		log.Print(err)
 		return
@@ -116,14 +153,71 @@ func (s *Server) handle(conn net.Conn) {
 	log.Print(uri.Path)
 	log.Print(uri.Query())
 
-	s.mu.RLock()
-	if handler, ok := s.handlers[uri.Path]; ok {
-		s.mu.RUnlock()
-		handler(&Request{
-			Conn:        conn,
-			QueryParams: uri.Query(),
-		})
+	req.Conn = conn
+	req.QueryParams = uri.Query()
+
+	handler := func(req *Request) {
+		req.Conn.Close()
 	}
+	s.mu.RLock()
+	pathPar, ok := s.findPath(uri.Path)
+	if ok != nil {
+		req.PathParams = pathPar
+		handler = ok
+	}
+	s.mu.RUnlock()
+	handler(&req)
+}
+
+func (s *Server) findPath(path string) (map[string]string, HandlerFunc) {
+
+	registRoutes := make([]string, len(s.handlers))
+	i := 0
+	for k := range s.handlers {
+		registRoutes[i] = k
+		i++
+	}
+
+	paramMap := make(map[string]string)
+
+	for i := 0; i < len(registRoutes); i++ {
+		flag := false
+		eachRegistRoutes := registRoutes[i]
+		partsOfRegistRoutes := strings.Split(eachRegistRoutes, "/")
+		partsOfClientRoutes := strings.Split(path, "/")
+
+		for j, v := range partsOfRegistRoutes {
+			if v != "" {
+				f := v[0:1]
+				l := v[len(v)-1:]
+				if f == "{" && l == "}" {
+					paramMap[v[1:len(v)-1]] = partsOfClientRoutes[j] 
+					flag = true
+				} else if partsOfClientRoutes[j] != v {
+
+					strs := strings.Split(v, "{")
+					if len(strs) > 0 {
+						key := strs[1][:len(strs[1])-1]
+						paramMap[key] = partsOfClientRoutes[j][len(strs[0]):]
+						flag = true
+					} else {
+						flag = false
+						break
+					}
+				}
+				flag = true
+			}
+		}
+		if flag {
+			if function, status := s.handlers[eachRegistRoutes]; status {
+				return paramMap, function
+			}
+			break
+		}
+	}
+
+	return nil, nil
+
 }
 
 
