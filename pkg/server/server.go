@@ -1,22 +1,24 @@
 package server
 
 import (
-	"net"
-	"sync"
-	"strconv"
-	"strings"
 	"bytes"
 	"io"
 	"log"
+	"net"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
 )
 
 const lineCRLF string = "\r\n"
 
-type HandlerFunc func(con net.Conn)
+type HandlerFunc func(req *Request)
 
 type Request struct{
 	Conn		net.Conn
-	PathParams	map[string]string
+	//PathParams	map[string]string
+	QueryParams	url.Values
 }
 
 type Server struct{
@@ -84,6 +86,7 @@ func (s *Server) handle(conn net.Conn) {
 
 	//Parsing...
 	data := buf[:n]
+
 	requestLineDelim := []byte{'\r', '\n'}
 	requestLineEnd := bytes.Index(data, requestLineDelim)
 
@@ -100,16 +103,26 @@ func (s *Server) handle(conn net.Conn) {
 	}
 
 	path, version := parts[1], parts[2]
-
 	if version != "HTTP/1.1" {
 		log.Print("Version Not HTTP/1.1: ", version)
 		return
 	}
 
+	uri, err := url.ParseRequestURI(path)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+	log.Print(uri.Path)
+	log.Print(uri.Query())
+
 	s.mu.RLock()
-	if handler, ok := s.handlers[path]; ok {
+	if handler, ok := s.handlers[uri.Path]; ok {
 		s.mu.RUnlock()
-		handler(conn)
+		handler(&Request{
+			Conn:        conn,
+			QueryParams: uri.Query(),
+		})
 	}
 }
 
