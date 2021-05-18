@@ -66,7 +66,6 @@ func (s *Server) Start() error{
 	}
 }
 
-//handle - handles the connection
 func (s *Server) handle(conn net.Conn) {
 
 	defer func() {
@@ -87,7 +86,6 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 
-	//Parsing request line
 	data := buf[:n]
 	requestDelimetr := []byte{'\r', '\n'}
 	requestLine := bytes.Index(data, requestDelimetr)
@@ -96,7 +94,6 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 
-	//Parsing header line
 	headerDelimetr := []byte{'\r', '\n', '\r', '\n'}
 	headerLine := bytes.Index(data, headerDelimetr)
 	if headerLine == -1 {
@@ -105,9 +102,6 @@ func (s *Server) handle(conn net.Conn) {
 	}
 
 	headersLine := string(data[requestLine:headerLine])
-	// Use - header := strings.Split(headerLine, "\r\n")[1:]
-	// [1:] == [1:len(headerLine)]
-	// header will be without "", key of the header will start with one.
 	header := strings.Split(headersLine, "\r\n")
 
 	paramMap := make(map[string]string)
@@ -119,12 +113,6 @@ func (s *Server) handle(conn net.Conn) {
 	}
 	req.Headers = paramMap
 
-	//Parsing body line
-	body := string(data[headerLine:])
-	bodyLine := strings.Trim(body, "\r\n")
-	req.Body = []byte(bodyLine)
-
-	//Continuing to parsing the request lines
 	request := string(data[:requestLine])
 	parts := strings.Split(request, " ")
 	if len(parts) != 3 {
@@ -169,6 +157,7 @@ func (s *Server) handle(conn net.Conn) {
 	handler(&req)
 }
 
+
 func (s *Server) findPath(path string) (map[string]string, HandlerFunc) {
 
 	registRoutes := make([]string, len(s.handlers))
@@ -191,13 +180,16 @@ func (s *Server) findPath(path string) (map[string]string, HandlerFunc) {
 				f := v[0:1]
 				l := v[len(v)-1:]
 				if f == "{" && l == "}" {
-					paramMap[v[1:len(v)-1]] = partsOfClientRoutes[j] 
+					paramMap[v[1:len(v)-1]] = partsOfClientRoutes[j] //id = "number"
 					flag = true
 				} else if partsOfClientRoutes[j] != v {
 
 					strs := strings.Split(v, "{")
 					if len(strs) > 0 {
-						key := strs[1][:len(strs[1])-1]
+						key := strs[1][:len(strs[1])-1] // key = "id}"->"id"
+						//Here could be error output, if client route won't match with registred route.
+						//Example: [clientRoute][registredRoute]
+						//[categories2][category] -> "es2" and the value will - param[id] = es2
 						paramMap[key] = partsOfClientRoutes[j][len(strs[0]):]
 						flag = true
 					} else {
@@ -217,7 +209,6 @@ func (s *Server) findPath(path string) (map[string]string, HandlerFunc) {
 	}
 
 	return nil, nil
-
 }
 
 
