@@ -85,7 +85,7 @@ func (s *Server) handle(conn net.Conn) {
 		log.Println("Error not nil after reading", err)
 		return
 	}
-
+	
 	data := buf[:n]
 	requestDelimetr := []byte{'\r', '\n'}
 	requestLine := bytes.Index(data, requestDelimetr)
@@ -93,7 +93,7 @@ func (s *Server) handle(conn net.Conn) {
 		log.Print("requestLineErr: ", requestLine)
 		return
 	}
-
+	
 	headerDelimetr := []byte{'\r', '\n', '\r', '\n'}
 	headerLine := bytes.Index(data, headerDelimetr)
 	if headerLine == -1 {
@@ -112,7 +112,11 @@ func (s *Server) handle(conn net.Conn) {
 		}
 	}
 	req.Headers = paramMap
-
+	
+	body := string(data[headerLine:])
+	bodyLine := strings.Trim(body, "\r\n")
+	req.Body = []byte(bodyLine)
+	
 	request := string(data[:requestLine])
 	parts := strings.Split(request, " ")
 	if len(parts) != 3 {
@@ -180,16 +184,13 @@ func (s *Server) findPath(path string) (map[string]string, HandlerFunc) {
 				f := v[0:1]
 				l := v[len(v)-1:]
 				if f == "{" && l == "}" {
-					paramMap[v[1:len(v)-1]] = partsOfClientRoutes[j] //id = "number"
+					paramMap[v[1:len(v)-1]] = partsOfClientRoutes[j] 
 					flag = true
 				} else if partsOfClientRoutes[j] != v {
 
 					strs := strings.Split(v, "{")
 					if len(strs) > 0 {
-						key := strs[1][:len(strs[1])-1] // key = "id}"->"id"
-						//Here could be error output, if client route won't match with registred route.
-						//Example: [clientRoute][registredRoute]
-						//[categories2][category] -> "es2" and the value will - param[id] = es2
+						key := strs[1][:len(strs[1])-1] 
 						paramMap[key] = partsOfClientRoutes[j][len(strs[0]):]
 						flag = true
 					} else {
