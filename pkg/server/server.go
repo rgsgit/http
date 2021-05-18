@@ -186,10 +186,7 @@ func (s *Server) findPath(path string) (map[string]string, HandlerFunc) {
 
 					strs := strings.Split(v, "{")
 					if len(strs) > 0 {
-						key := strs[1][:len(strs[1])-1] // key = "id}"->"id"
-						//Here could be error output, if client route won't match with registred route.
-						//Example: [clientRoute][registredRoute]
-						//[categories2][category] -> "es2" and the value will - param[id] = es2
+						key := strs[1][:len(strs[1])-1]
 						paramMap[key] = partsOfClientRoutes[j][len(strs[0]):]
 						flag = true
 					} else {
